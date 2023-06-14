@@ -12,7 +12,8 @@ const globalState = {
         term: '',
         type: '',
         page: 1,
-        totalPages: 1
+        totalPages: 1,
+        totalResults: 0
     }
 };
 
@@ -43,13 +44,17 @@ const fetchDataFromAPI = async (endpoint) => {
 const searchApiData = async () => {
     showSpinner();
     try {
-        const response = await fetch(`${url}search/${globalState.search.type}?api_key=${TOKEN}&language=en-US&query=${globalState.search.term}`);
+        const response = await fetch(`${url}search/${globalState.search.type}?api_key=${TOKEN}&language=en-US&query=${globalState.search.term}&page=${globalState.search.page}`);
         if (!response.ok) {
             throw new Error(`Fetch from API failed with status ${response.status}`);
         }
         const data = await response.json();
         hideSpinner();
-        return data.results;
+        globalState.search.page = data.page;
+        globalState.search.totalPages = data.total_pages;
+        globalState.search.totalResults = data.total_results;
+        displayPagination();
+        return { results: data.results, total_results: data.total_results };
     }
     catch (error) {
         console.log(error);
@@ -314,7 +319,35 @@ const displaySearchedElement = (element) => {
     document.querySelector('#search-results').appendChild(div);
 }
 
-
+const displayPagination = () => {
+    document.querySelector('#pagination').innerHTML = '';
+    const div = document.createElement('div');
+    div.classList.add('pagination');
+    div.innerHTML = `
+        <div class="pagination">
+          <button class="btn btn-primary" id="prev">Prev</button>
+          <button class="btn btn-primary" id="next">Next</button>
+          <div class="page-counter">Page ${globalState.search.page} of ${globalState.search.totalPages}</div>
+        </div>`;
+    document.querySelector('#pagination').appendChild(div);
+    if (globalState.search.page === 1)
+        document.querySelector('#prev').disabled = true;
+    if (globalState.search.page === globalState.search.totalPages)
+        document.querySelector('#next').disabled = true;
+    
+    document.querySelector('#next').addEventListener('click', async () => { 
+        globalState.search.page++;
+        const { results } = await searchApiData();
+        document.querySelector('#search-results').innerHTML = ``;
+        results.forEach(element => displaySearchedElement(element));
+    })
+    document.querySelector('#prev').addEventListener('click', async () => { 
+        globalState.search.page--;
+        const { results } = await searchApiData();
+        document.querySelector('#search-results').innerHTML = ``;
+        results.forEach(element => displaySearchedElement(element));
+    })
+}
 
 const search = async () => {
     const queryString = window.location.search;
@@ -323,9 +356,12 @@ const search = async () => {
     globalState.search.term = urlParams.get('search-term');
 
     if (globalState.search.term !== '' && globalState.search.term !== null) {
-        const data = await searchApiData();
-        data.forEach(element => displaySearchedElement(element));
-        console.log(data);
+        const { results, total_results } = await searchApiData();
+        document.querySelector('#search-results-heading').innerHTML = `<h2>
+        Displaying ${results.length} out of ${total_results} results for '${globalState.search.term}'
+        </h2>
+        `
+        results.forEach(element => displaySearchedElement(element));
     }
     else {
         alert('Please enter a query before searching.');
